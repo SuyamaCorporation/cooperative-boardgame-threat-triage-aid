@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>協力型ボードゲーム脅威トリアージアシスタント</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap');
+  body { font-family: 'Noto Sans JP', sans-serif; }
+  .threat-card { transition: all 0.3s ease; }
+  .threat-high { border-left: 4px solid #ef4444; background: #fef2f2; }
+  .threat-mid { border-left: 4px solid #f59e0b; background: #fffbeb; }
+  .threat-low { border-left: 4px solid #22c55e; background: #f0fdf4; }
+  .threat-critical { animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.7} }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 0.7em; font-weight: bold; }
+  .badge-chain { background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; }
+  .badge-global { background: #fee2e2; color: #991b1b; }
+  .badge-regional { background: #fef3c7; color: #92400e; }
+  .badge-local { background: #d1fae5; color: #065f46; }
+  .score-bar { height: 6px; border-radius: 3px; background: #e5e7eb; }
+  .score-fill { height: 100%; border-radius: 3px; }
+  select, input[type="text"], input[type="number"] {
+    border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 10px;
+    background: white; font-family: inherit;
+  }
+  select:focus, input:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px #6366f120; }
+  .btn-primary { background: #6366f1; color: white; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; font-family: inherit; }
+  .btn-primary:hover { background: #4f46e5; }
+  .btn-secondary { background: white; color: #6366f1; border: 2px solid #6366f1; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-family: inherit; }
+  .btn-secondary:hover { background: #f0f0ff; }
+  .btn-danger { background: white; color: #ef4444; border: 2px solid #ef4444; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-family: inherit; }
+  .btn-danger:hover { background: #fef2f2; }
+  .btn-sm { padding: 4px 10px; font-size: 0.8em; }
+  .priority-num { font-size: 2rem; font-weight: 900; min-width: 2.5rem; text-align: center; }
+  .turn-clock { font-size: 3rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<div class="max-w-5xl mx-auto p-4">
+  <!-- Header -->
+  <header class="bg-indigo-900 text-white rounded-xl p-4 mb-4">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-xl font-bold">🎲 脅威トリアージアシスタント</h1>
+        <p class="text-indigo-200 text-sm">協力型ボードゲーム脅威優先度管理ツール</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <label for="gamePreset" class="text-sm font-semibold">ゲーム:</label>
+        <select id="gamePreset" class="text-gray-800 font-bold text-sm">
+          <option value="pandemic">パンデミック</option>
+          <option value="arkham">アーカムホラー</option>
+          <option value="generic">汎用</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
+    <!-- Left: Controls -->
+    <div class="lg:col-span-2 space-y-4">
+
+      <!-- Turn Counter -->
+      <div class="bg-white rounded-xl p-4 border shadow-sm">
+        <h2 class="text-sm font-bold text-gray-500 uppercase mb-3">ターン管理</h2>
+        <div class="flex items-center gap-3">
+          <div>
+            <label for="remainingTurns" class="text-xs text-gray-500 block mb-1">残りターン数</label>
+            <input type="number" id="remainingTurns" min="0" max="99" value="5" class="w-20 text-center font-bold text-xl">
+          </div>
+          <div class="flex gap-2">
+            <button class="btn-secondary btn-sm" id="btnTurnMinus">-1</button>
+            <button class="btn-primary btn-sm" id="btnTurnPlus">+1</button>
+          </div>
+        </div>
+        <div class="turn-clock text-indigo-700 mt-2" id="turnDisplay">5</div>
+        <p class="text-xs text-gray-400">ターン残</p>
+      </div>
+
+      <!-- Hand Management -->
+      <div class="bg-white rounded-xl p-4 border shadow-sm">
+        <h2 class="text-sm font-bold text-gray-500 uppercase mb-3">手札・行動管理</h2>
+        <div class="grid grid-cols-2 gap-2 mb-2">
+          <div>
+            <label for="handSize" class="text-xs text-gray-500 block mb-1">手札枚数</label>
+            <input type="number" id="handSize" min="0" max="20" value="4" class="w-full">
+          </div>
+          <div>
+            <label for="actionPoints" class="text-xs text-gray-500 block mb-1">行動ポイント</label>
+            <input type="number" id="actionPoints" min="0" max="20" value="4" class="w-full">
+          </div>
+        </div>
+        <button class="btn-primary w-full text-sm mt-1" id="btnRecommend">このターンの推奨手順を表示</button>
+        <div id="recommendBox" class="mt-2 text-sm text-gray-700 hidden"></div>
+      </div>
+
+      <!-- Add Threat -->
+      <div class="bg-white rounded-xl p-4 border shadow-sm">
+        <h2 class="text-sm font-bold text-gray-500 uppercase mb-3">脅威を追加</h2>
+        <div class="space-y-2">
+          <div>
+            <label for="threatName" class="text-xs text-gray-500 block mb-1">脅威名</label>
+            <input type="text" id="threatName" class="w-full" placeholder="例: 東京 感染レベル3">
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label for="threatUrgency" class="text-xs text-gray-500 block mb-1">緊急度 (1-5)</label>
+              <select id="threatUrgency" class="w-full">
+                <option value="5">5 — 最高</option>
+                <option value="4">4 — 高</option>
+                <option value="3" selected>3 — 中</option>
+                <option value="2">2 — 低</option>
+                <option value="1">1 — 最低</option>
+              </select>
+            </div>
+            <div>
+              <label for="threatScope" class="text-xs text-gray-500 block mb-1">影響範囲</label>
+              <select id="threatScope" class="w-full">
+                <option value="global">グローバル</option>
+                <option value="regional" selected>リージョナル</option>
+                <option value="local">ローカル</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label for="threatTurns" class="text-xs text-gray-500 block mb-1">期限（ターン）</label>
+              <input type="number" id="threatTurns" min="1" max="20" value="2" class="w-full">
+            </div>
+            <div>
+              <label for="threatLocation" class="text-xs text-gray-500 block mb-1">場所（任意）</label>
+              <input type="text" id="threatLocation" class="w-full" placeholder="東京">
+            </div>
+          </div>
+          <button class="btn-primary w-full" id="btnAddThreat">脅威を追加</button>
+        </div>
+        <p id="threatLimitMsg" class="text-xs text-red-500 mt-1 hidden">最大10件です</p>
+      </div>
+
+      <div class="flex gap-2">
+        <button class="btn-secondary flex-1" id="btnSort">優先度順に並び替え</button>
+        <button class="btn-danger flex-1" id="btnClearAll">全消去</button>
+      </div>
+    </div>
+
+    <!-- Right: Threat Board -->
+    <div class="lg:col-span-3">
+      <div class="bg-white rounded-xl p-4 border shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-bold text-gray-500 uppercase">脅威ボード</h2>
+          <span id="threatCount" class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full font-bold">0 / 10</span>
+        </div>
+        <div id="threatBoard" class="space-y-2">
+          <p class="text-sm text-gray-400 text-center py-8">脅威を追加してください</p>
+        </div>
+      </div>
+
+      <!-- Recommendation -->
+      <div id="triageResult" class="bg-indigo-50 rounded-xl p-4 border border-indigo-200 mt-4 hidden">
+        <h2 class="text-sm font-bold text-indigo-700 uppercase mb-2">🧭 トリアージ推奨順</h2>
+        <div id="triageList" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  let threats = [];
+  let nextId = 1;
+
+  const scopeWeight = { global: 3, regional: 2, local: 1 };
+  const scopeLabel = { global: 'グローバル', regional: 'リージョナル', local: 'ローカル' };
+  const scopeClass = { global: 'badge-global', regional: 'badge-regional', local: 'badge-local' };
+
+  function calcScore(t) {
+    const remaining = parseInt(document.getElementById('remainingTurns').value) || 5;
+    const timePressure = Math.max(0, (remaining - t.deadlineTurns + 1)) / remaining;
+    return t.urgency * scopeWeight[t.scope] * (1 + timePressure * 2);
+  }
+
+  function findChainRisks() {
+    const locationMap = {};
+    threats.forEach(t => {
+      if (t.location) {
+        if (!locationMap[t.location]) locationMap[t.location] = [];
+        locationMap[t.location].push(t.id);
+      }
+    });
+    const chainIds = new Set();
+    Object.values(locationMap).forEach(ids => {
+      if (ids.length > 1) ids.forEach(id => chainIds.add(id));
+    });
+    return chainIds;
+  }
+
+  function getLevel(urgency) {
+    if (urgency >= 4) return 'high';
+    if (urgency >= 3) return 'mid';
+    return 'low';
+  }
+
+  function getLevelIcon(urgency) {
+    if (urgency >= 4) return '🔴';
+    if (urgency >= 3) return '🟡';
+    return '🟢';
+  }
+
+  function renderBoard() {
+    const board = document.getElementById('threatBoard');
+    const chainIds = findChainRisks();
+    board.innerHTML = '';
+
+    document.getElementById('threatCount').textContent = `${threats.length} / 10`;
+    document.getElementById('threatLimitMsg').classList.toggle('hidden', threats.length < 10);
+
+    if (threats.length === 0) {
+      const p = document.createElement('p');
+      p.className = 'text-sm text-gray-400 text-center py-8';
+      p.textContent = '脅威を追加してください';
+      board.appendChild(p);
+      return;
+    }
+
+    const remaining = parseInt(document.getElementById('remainingTurns').value) || 5;
+
+    threats.forEach((t, idx) => {
+      const level = getLevel(t.urgency);
+      const isChain = chainIds.has(t.id);
+      const isCritical = t.deadlineTurns <= 1;
+      const turnsLeft = t.deadlineTurns;
+
+      const card = document.createElement('div');
+      card.className = `threat-card p-3 rounded-lg border threat-${level} ${isCritical ? 'threat-critical' : ''}`;
+      card.dataset.id = t.id;
+
+      const header = document.createElement('div');
+      header.className = 'flex items-start justify-between gap-2';
+
+      const left = document.createElement('div');
+      left.className = 'flex items-center gap-2 flex-1 min-w-0';
+
+      const icon = document.createElement('span');
+      icon.textContent = getLevelIcon(t.urgency);
+      icon.setAttribute('aria-hidden', 'true');
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'font-bold text-sm truncate';
+      nameSpan.textContent = t.name;
+
+      left.appendChild(icon);
+      left.appendChild(nameSpan);
+
+      const right = document.createElement('div');
+      right.className = 'flex items-center gap-1 flex-shrink-0';
+
+      if (isChain) {
+        const chainBadge = document.createElement('span');
+        chainBadge.className = 'badge badge-chain';
+        chainBadge.textContent = '⛓ 連鎖';
+        right.appendChild(chainBadge);
+      }
+
+      const scopeBadge = document.createElement('span');
+      scopeBadge.className = `badge ${scopeClass[t.scope]}`;
+      scopeBadge.textContent = scopeLabel[t.scope];
+      right.appendChild(scopeBadge);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'text-gray-400 hover:text-red-500 ml-1 font-bold text-lg leading-none';
+      delBtn.textContent = '×';
+      delBtn.setAttribute('aria-label', `${t.name}を削除`);
+      delBtn.dataset.id = t.id;
+      delBtn.addEventListener('click', function() {
+        threats = threats.filter(th => th.id !== parseInt(this.dataset.id));
+        renderBoard();
+      });
+      right.appendChild(delBtn);
+
+      header.appendChild(left);
+      header.appendChild(right);
+
+      const info = document.createElement('div');
+      info.className = 'flex gap-4 mt-2 text-xs text-gray-600';
+
+      const urgSpan = document.createElement('span');
+      urgSpan.textContent = `緊急度: ${t.urgency}/5`;
+
+      const turnsSpan = document.createElement('span');
+      turnsSpan.className = turnsLeft <= 1 ? 'text-red-600 font-bold' : '';
+      turnsSpan.textContent = `期限: ${turnsLeft}ターン`;
+
+      if (t.location) {
+        const locSpan = document.createElement('span');
+        locSpan.textContent = `📍 ${t.location}`;
+        info.appendChild(locSpan);
+      }
+      info.appendChild(urgSpan);
+      info.appendChild(turnsSpan);
+
+      const scoreSpan = document.createElement('span');
+      const score = calcScore(t);
+      scoreSpan.textContent = `スコア: ${score.toFixed(1)}`;
+      scoreSpan.className = 'ml-auto text-indigo-600 font-semibold';
+      info.appendChild(scoreSpan);
+
+      card.appendChild(header);
+      card.appendChild(info);
+      board.appendChild(card);
+    });
+  }
+
+  function sortAndTriage() {
+    const chainIds = findChainRisks();
+    const sorted = [...threats].sort((a, b) => calcScore(b) - calcScore(a));
+
+    const triageResult = document.getElementById('triageResult');
+    const triageList = document.getElementById('triageList');
+    triageList.innerHTML = '';
+    triageResult.classList.remove('hidden');
+
+    sorted.forEach((t, i) => {
+      const isChain = chainIds.has(t.id);
+      const row = document.createElement('div');
+      row.className = 'flex items-center gap-3 bg-white rounded-lg p-2 border';
+
+      const num = document.createElement('div');
+      num.className = 'priority-num text-indigo-700';
+      num.textContent = i + 1;
+
+      const content = document.createElement('div');
+      content.className = 'flex-1 min-w-0';
+
+      const name = document.createElement('div');
+      name.className = 'font-bold text-sm';
+      name.textContent = `${getLevelIcon(t.urgency)} ${t.name}`;
+
+      const reason = document.createElement('div');
+      reason.className = 'text-xs text-gray-500 mt-0.5';
+      let reasonText = `緊急度${t.urgency} × ${scopeLabel[t.scope]} × 期限${t.deadlineTurns}ターン = スコア${calcScore(t).toFixed(1)}`;
+      if (isChain) reasonText += ' ⚠️ 連鎖リスクあり';
+      if (t.deadlineTurns <= 1) reasonText += ' 🚨 今ターン必須！';
+      reason.textContent = reasonText;
+
+      content.appendChild(name);
+      content.appendChild(reason);
+      row.appendChild(num);
+      row.appendChild(content);
+      triageList.appendChild(row);
+    });
+
+    threats = sorted;
+    renderBoard();
+  }
+
+  function recommendAction() {
+    const actionPoints = parseInt(document.getElementById('actionPoints').value) || 4;
+    const handSize = parseInt(document.getElementById('handSize').value) || 4;
+    const chainIds = findChainRisks();
+    const sorted = [...threats].sort((a, b) => calcScore(b) - calcScore(a));
+    const topN = sorted.slice(0, Math.min(3, actionPoints));
+
+    const box = document.getElementById('recommendBox');
+    box.innerHTML = '';
+    box.classList.remove('hidden');
+
+    if (threats.length === 0) {
+      box.textContent = '脅威がありません';
+      return;
+    }
+
+    const title = document.createElement('div');
+    title.className = 'font-bold text-indigo-700 mb-1';
+    title.textContent = `推奨: ${actionPoints}行動ポイントで対処`;
+    box.appendChild(title);
+
+    topN.forEach((t, i) => {
+      const item = document.createElement('div');
+      item.className = 'text-xs py-0.5';
+      item.textContent = `${i+1}. ${t.name}（緊急度${t.urgency}）`;
+      box.appendChild(item);
+    });
+
+    if (handSize < topN.length * 2) {
+      const warn = document.createElement('div');
+      warn.className = 'text-xs text-orange-600 mt-1';
+      warn.textContent = '⚠ 手札が不足している可能性があります';
+      box.appendChild(warn);
+    }
+  }
+
+  document.getElementById('btnAddThreat').addEventListener('click', function() {
+    if (threats.length >= 10) return;
+    const name = document.getElementById('threatName').value.trim();
+    if (!name) {
+      document.getElementById('threatName').focus();
+      return;
+    }
+    threats.push({
+      id: nextId++,
+      name,
+      urgency: parseInt(document.getElementById('threatUrgency').value),
+      scope: document.getElementById('threatScope').value,
+      deadlineTurns: parseInt(document.getElementById('threatTurns').value) || 2,
+      location: document.getElementById('threatLocation').value.trim()
+    });
+    document.getElementById('threatName').value = '';
+    document.getElementById('threatLocation').value = '';
+    renderBoard();
+  });
+
+  document.getElementById('btnSort').addEventListener('click', sortAndTriage);
+  document.getElementById('btnClearAll').addEventListener('click', function() {
+    threats = [];
+    renderBoard();
+    document.getElementById('triageResult').classList.add('hidden');
+  });
+  document.getElementById('btnRecommend').addEventListener('click', recommendAction);
+  document.getElementById('btnTurnMinus').addEventListener('click', function() {
+    const el = document.getElementById('remainingTurns');
+    el.value = Math.max(0, parseInt(el.value) - 1);
+    document.getElementById('turnDisplay').textContent = el.value;
+    renderBoard();
+  });
+  document.getElementById('btnTurnPlus').addEventListener('click', function() {
+    const el = document.getElementById('remainingTurns');
+    el.value = parseInt(el.value) + 1;
+    document.getElementById('turnDisplay').textContent = el.value;
+    renderBoard();
+  });
+  document.getElementById('remainingTurns').addEventListener('input', function() {
+    document.getElementById('turnDisplay').textContent = this.value;
+    renderBoard();
+  });
+
+  // Enter to add threat
+  document.getElementById('threatName').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') document.getElementById('btnAddThreat').click();
+  });
+
+  renderBoard();
+})();
+</script>
+</body>
+</html>
